@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test Client - Task Management</title>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .connection-panel {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e4e8;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-connect {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-connect:hover:not(:disabled) {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+        }
+        
+        .btn-disconnect {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-disconnect:hover:not(:disabled) {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+        }
+        
+        .btn-clear {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-clear:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .status::before {
+            content: '';
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .connected {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+        
+        .connected::before {
+            background: #28a745;
+        }
+        
+        .disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+        
+        .disconnected::before {
+            background: #dc3545;
+        }
+        
+        .connection-info {
+            background: #e7f3ff;
+            border: 2px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        
+        .connection-info h3 {
+            margin-bottom: 10px;
+            color: #0066cc;
+        }
+        
+        .connection-info p {
+            margin: 5px 0;
+            color: #333;
+        }
+        
+        .connection-info strong {
+            color: #0066cc;
+        }
+        
+        .events-section {
+            margin-top: 20px;
+        }
+        
+        .events-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .events-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+        
+        .event-count {
+            background: #667eea;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .log {
+            background: #f8f9fa;
+            border: 2px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .log:empty::before {
+            content: 'No events yet. Connect and start monitoring...';
+            color: #6c757d;
+            font-style: italic;
+        }
+        
+        .event {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 6px;
+            background: white;
+            border-left: 4px solid;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .event-type {
+            font-weight: 700;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .event-time {
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        .event-data {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .new-task {
+            border-left-color: #2196F3;
+        }
+        
+        .new-task .event-type {
+            color: #2196F3;
+        }
+        
+        .task-updated {
+            border-left-color: #FF9800;
+        }
+        
+        .task-updated .event-type {
+            color: #FF9800;
+        }
+        
+        .task-deleted {
+            border-left-color: #f44336;
+        }
+        
+        .task-deleted .event-type {
+            color: #f44336;
+        }
+        
+        .task-completed {
+            border-left-color: #4CAF50;
+        }
+        
+        .task-completed .event-type {
+            color: #4CAF50;
+        }
+        
+        .task-reminders {
+            border-left-color: #9C27B0;
+            background: #f3e5f5;
+        }
+        
+        .task-reminders .event-type {
+            color: #9C27B0;
+        }
+        
+        .connect-event {
+            border-left-color: #28a745;
+            background: #e7f9ec;
+        }
+        
+        .connect-event .event-type {
+            color: #28a745;
+        }
+        
+        .error-event {
+            border-left-color: #dc3545;
+            background: #fbe9eb;
+        }
+        
+        .error-event .event-type {
+            color: #dc3545;
+        }
+        
+        /* Scrollbar styling */
+        .log::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .log::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        
+        .log::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        .log::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔌 WebSocket Test Client</h1>
+            <p>Real-time Task Management Monitoring Dashboard</p>
+        </div>
+        
+        <div class="content">
+            <div class="connection-panel">
+                <div class="input-group">
+                    <label for="serverUrl">Server URL:</label>
+                    <input type="text" id="serverUrl" value="http://localhost:3000" placeholder="http://localhost:3000">
+                </div>
+                <div class="input-group">
+                    <label for="token">JWT Token:</label>
+                    <input type="text" id="token" placeholder="Paste your JWT token here...">
+                </div>
+                <div class="button-group">
+                    <button class="btn-connect" id="btnConnect" onclick="connect()">🔗 Connect</button>
+                    <button class="btn-disconnect" id="btnDisconnect" onclick="disconnect()" disabled>❌ Disconnect</button>
+                </div>
+            </div>
+
+            <div id="status" class="status disconnected">⚫ Disconnected</div>
+            
+            <div id="connectionInfo" class="connection-info" style="display: none;">
+                <h3>📊 Connection Details</h3>
+                <p><strong>Socket ID:</strong> <span id="socketId">-</span></p>
+                <p><strong>User:</strong> <span id="userEmail">-</span></p>
+                <p><strong>Role:</strong> <span id="userRole">-</span></p>
+                <p><strong>Rooms:</strong> <span id="userRooms">-</span></p>
+                <p><strong>Connected At:</strong> <span id="connectedAt">-</span></p>
+            </div>
+
+            <div class="events-section">
+                <div class="events-header">
+                    <h2>📡 Event Monitor</h2>
+                    <div>
+                        <span class="event-count" id="eventCount">0 events</span>
+                        <button class="btn-clear" onclick="clearLog()" style="margin-left: 10px;">🗑️ Clear Log</button>
+                    </div>
+                </div>
+                <div id="log" class="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let eventCount = 0;
+
+        function connect() {
+            const serverUrl = document.getElementById('serverUrl').value.trim();
+            const token = document.getElementById('token').value.trim();
+            
+            if (!serverUrl) {
+                alert('⚠️ Please enter server URL');
+                return;
+            }
+            
+            if (!token) {
+                alert('⚠️ Please enter a JWT token');
+                return;
+            }
+
+            updateStatus('🔄 Connecting...', 'disconnected');
+            document.getElementById('btnConnect').disabled = true;
+
+            socket = io(serverUrl, {
+                auth: { token },
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5,
+            });
+
+            socket.on('connect', () => {
+                updateStatus('✅ Connected', 'connected');
+                document.getElementById('btnConnect').disabled = true;
+                document.getElementById('btnDisconnect').disabled = false;
+                addLog(`Successfully connected to ${serverUrl}`, 'connect-event', '✅ Connected');
+            });
+
+            socket.on('connected', (data) => {
+                document.getElementById('connectionInfo').style.display = 'block';
+                document.getElementById('socketId').textContent = data.socketId;
+                document.getElementById('userEmail').textContent = data.email;
+                document.getElementById('userRole').textContent = data.role;
+                document.getElementById('userRooms').textContent = data.rooms.join(', ');
+                document.getElementById('connectedAt').textContent = new Date(data.timestamp).toLocaleString();
+                
+                addLog(JSON.stringify(data, null, 2), 'connect-event', '🎉 Welcome Message');
+            });
+
+            socket.on('disconnect', (reason) => {
+                updateStatus(`⚫ Disconnected: ${reason}`, 'disconnected');
+                document.getElementById('btnConnect').disabled = false;
+                document.getElementById('btnDisconnect').disabled = true;
+                document.getElementById('connectionInfo').style.display = 'none';
+                addLog(`Disconnected from server. Reason: ${reason}`, 'error-event', '⚠️ Disconnected');
+            });
+
+            socket.on('connect_error', (error) => {
+                updateStatus(`❌ Connection Error: ${error.message}`, 'disconnected');
+                document.getElementById('btnConnect').disabled = false;
+                document.getElementById('btnDisconnect').disabled = true;
+                addLog(`Connection error: ${error.message}`, 'error-event', '❌ Error');
+            });
+
+            socket.on('newTask', (data) => {
+                addLog(JSON.stringify(data, null, 2), 'new-task', '🆕 New Task Created');
+            });
+
+            socket.on('taskUpdated', (data) => {
+                addLog(JSON.stringify(data, null, 2), 'task-updated', '📝 Task Updated');
+            });
+
+            socket.on('taskDeleted', (data) => {
+                addLog(JSON.stringify(data, null, 2), 'task-deleted', '🗑️ Task Deleted');
+            });
+
+            socket.on('taskCompleted', (data) => {
+                addLog(JSON.stringify(data, null, 2), 'task-completed', '✅ Task Completed');
+            });
+
+            socket.on('taskReminders', (data) => {
+                const reminderHtml = `<strong>Message:</strong> ${data.message}
+<strong>Task Count:</strong> ${data.count}
+<strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}
+
+<strong>Tasks Requiring Attention:</strong>
+${JSON.stringify(data.tasks, null, 2)}`;
+                addLog(reminderHtml, 'task-reminders', `⏰ Task Reminders (${data.count})`);
+            });
+
+            socket.on('testBroadcast', (data) => {
+                addLog(JSON.stringify(data, null, 2), 'connect-event', '📢 Test Broadcast');
+            });
+
+            socket.on('pong', (data) => {
+                addLog(JSON.stringify(data, null, 2), 'connect-event', '🏓 Pong');
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                updateStatus('⚫ Disconnected', 'disconnected');
+                document.getElementById('btnConnect').disabled = false;
+                document.getElementById('btnDisconnect').disabled = true;
+                document.getElementById('connectionInfo').style.display = 'none';
+            }
+        }
+
+        function updateStatus(text, className) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = text;
+            statusEl.className = 'status ' + className;
+        }
+
+        function addLog(message, className = '', eventType = '') {
+            eventCount++;
+            document.getElementById('eventCount').textContent = `${eventCount} event${eventCount !== 1 ? 's' : ''}`;
+            
+            const logEl = document.getElementById('log');
+            const eventEl = document.createElement('div');
+            eventEl.className = 'event ' + className;
+            
+            const time = new Date().toLocaleTimeString();
+            
+            eventEl.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type">${eventType || className.replace('-', ' ')}</span>
+                    <span class="event-time">${time}</span>
+                </div>
+                <div class="event-data">${message}</div>
+            `;
+            
+            logEl.insertBefore(eventEl, logEl.firstChild);
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            eventCount = 0;
+            document.getElementById('eventCount').textContent = '0 events';
+        }
+
+        // Auto-save token
+        document.getElementById('token').addEventListener('change', (e) => {
+            localStorage.setItem('websocket_token', e.target.value);
+        });
+
+        // Load saved token
+        window.addEventListener('load', () => {
+            const savedToken = localStorage.getItem('websocket_token');
+            if (savedToken) {
+                document.getElementById('token').value = savedToken;
+            }
+        });
+    </script>
+</body>
+</html>
