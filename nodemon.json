@@ -1,0 +1,21 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "ignore": ["src/**/*.spec.ts", "src/**/*.test.ts", "node_modules", "dist"],
+  "exec": "ts-node ./src/app.ts",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "restartable": "rs",
+  "delay": "1000",
+  "verbose": true,
+  "colours": true,
+  "events": {
+    "restart": "echo Restarting application...",
+    "crash": "echo Application crashed - waiting for changes...",
+    "start": "echo Application started"
+  },
+  "nodeArgs": [],
+  "signal": "SIGTERM",
+  "legacyWatch": false
+}

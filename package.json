@@ -1,0 +1,45 @@
+{
+  "name": "ocreateo-backend",
+  "version": "1.0.0",
+  "description": "Task Management Backend with Authentication",
+  "main": "dist/app.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon",
+    "dev:ts-node": "ts-node-dev --respawn --transpile-only src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "lint": "eslint . --ext .ts",
+    "seed": "ts-node src/database/seeders/seed.ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["express", "typescript", "jwt", "authentication", "websocket", "cron", "mongodb"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.0",
+    "dotenv": "^16.3.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-validator": "^7.0.1",
+    "socket.io": "^4.6.1",
+    "node-cron": "^3.0.3",
+    "mongoose": "^8.0.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.17",
+    "@types/bcryptjs": "^2.4.2",
+    "@types/jsonwebtoken": "^9.0.2",
+    "@types/uuid": "^9.0.2",
+    "@types/node": "^20.4.2",
+    "@types/cors": "^2.8.13",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "^5.1.6",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "nodemon": "^3.0.2"
+  }
+}
