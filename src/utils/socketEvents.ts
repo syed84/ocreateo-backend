@@ -52,3 +52,30 @@ export const emitToRoom = (room: string, event: string, data: any): void => {
     logger.error(`Failed to emit WebSocket event to room: ${event}`, error);
   }
 };
+
+export const emitTaskReminderToUser = (userId: string, tasks: any[]): void => {
+  try {
+    const io = getIO();
+    
+    const reminderData = {
+      message: `You have ${tasks.length} incomplete task${tasks.length > 1 ? 's' : ''} that need${tasks.length === 1 ? 's' : ''} attention`,
+      count: tasks.length,
+      tasks: tasks.map(task => ({
+        taskId: task.taskId,
+        title: task.title,
+        description: task.description,
+        createdAt: task.createdAt,
+        age: task.age,
+        daysOld: task.daysOld,
+      })),
+      timestamp: new Date().toISOString(),
+    };
+    
+    // Emit to specific user's room
+    io.to(`user:${userId}`).emit('userTaskReminders', reminderData);
+    
+    logger.info(`Task reminders sent to user ${userId}: ${tasks.length} task(s)`);
+  } catch (error) {
+    logger.error(`Failed to emit task reminders to user ${userId}:`, error);
+  }
+};

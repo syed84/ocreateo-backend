@@ -1,43 +1,39 @@
 import cron from 'node-cron';
-import { config } from '../config/config';
-import { logger } from '../utils/logger';
 import { taskRepository } from '../database/repositories/taskRepository';
 import { userRepository } from '../database/repositories/userRepository';
-import { Task } from '../models/Task';
-import { emitToAdmins } from '../utils/socketEvents';
+import { logger } from '../utils/logger';
+import { emitToAdmins, emitTaskReminderToUser } from '../utils/socketEvents';
+import { config } from '../config/config';
 
-export class CronService {
+class CronService {
   private jobs: Map<string, cron.ScheduledTask> = new Map();
+  private isEnabled: boolean = false;
 
   /**
    * Initialize all cron jobs
    */
   initializeCronJobs(): void {
     if (!config.cron.enabled) {
-      logger.warn('Cron jobs are disabled in configuration');
+      logger.info('Cron jobs are disabled in configuration');
       return;
     }
 
-    this.setupTaskReminderJob();
-    logger.info('All cron jobs initialized successfully');
+    this.isEnabled = true;
+    this.scheduleTaskReminders();
+    logger.info('Cron service initialized successfully');
   }
 
   /**
    * Setup the task reminder cron job
    * Runs daily at configured time (default: 8:00 AM)
    */
-  private setupTaskReminderJob(): void {
+  private scheduleTaskReminders(): void {
     const schedule = config.cron.reminderSchedule;
-
-    // Validate cron expression
-    if (!cron.validate(schedule)) {
-      logger.error(`Invalid cron schedule: ${schedule}`);
-      return;
-    }
+    
+    logger.info(`Scheduling task reminder cron job: ${schedule}`);
 
     const job = cron.schedule(schedule, async () => {
-      logger.info('Running task reminder cron job...');
-      await this.sendTaskReminders();
+      await this.triggerTaskReminders();
     });
 
     this.jobs.set('taskReminder', job);
@@ -47,13 +43,15 @@ export class CronService {
   /**
    * Find and send reminders for incomplete tasks older than threshold
    */
-  private async sendTaskReminders(): Promise<void> {
+  async triggerTaskReminders(): Promise<void> {
     try {
-      // Calculate threshold date
-      const thresholdMs = config.cron.taskReminderThresholdHours * 60 * 60 * 1000;
-      const thresholdDate = new Date(Date.now() - thresholdMs);
+      logger.info('Running task reminder cron job...');
 
-      // Use repository method to find incomplete tasks
+      const thresholdHours = config.cron.taskReminderThresholdHours;
+      const thresholdDate = new Date();
+      thresholdDate.setHours(thresholdDate.getHours() - thresholdHours);
+
+      // Get all incomplete tasks older than threshold
       const incompleteTasks = await taskRepository.findIncompleteTasks(thresholdDate);
 
       if (incompleteTasks.length === 0) {
@@ -63,70 +61,171 @@ export class CronService {
 
       logger.info(`Found ${incompleteTasks.length} incomplete tasks for reminders`);
 
-      // Log reminders
-      await this.logTaskReminders(incompleteTasks);
+      // Log to console
+      this.logTaskReminders(incompleteTasks, thresholdHours);
 
-      // Send WebSocket notifications to admins
-      this.notifyAdmins(incompleteTasks);
+      // Group tasks by user
+      const tasksByUser = this.groupTasksByUser(incompleteTasks);
 
-      logger.info(`Task reminders sent successfully for ${incompleteTasks.length} tasks`);
+      // Send reminders to individual users
+      await this.sendUserReminders(tasksByUser, thresholdHours);
+
+      // Send summary to admins
+      await this.sendAdminSummary(incompleteTasks, thresholdHours, tasksByUser);
+
+      logger.info(`Task reminders sent successfully for ${incompleteTasks.length} tasks to ${tasksByUser.size} users and all admins`);
     } catch (error) {
-      logger.error('Error sending task reminders:', error);
+      logger.error('Error in task reminder cron job:', error);
+      throw error;
+    }
+  }
+
+  private groupTasksByUser(tasks: any[]): Map<string, any[]> {
+    const tasksByUser = new Map<string, any[]>();
+    
+    tasks.forEach(task => {
+      const userId = task.userId.toString();
+      if (!tasksByUser.has(userId)) {
+        tasksByUser.set(userId, []);
+      }
+      tasksByUser.get(userId)!.push(task);
+    });
+    
+    return tasksByUser;
+  }
+
+  private async sendUserReminders(tasksByUser: Map<string, any[]>, thresholdHours: number): Promise<void> {
+    logger.info(`Sending individual reminders to ${tasksByUser.size} users...`);
+
+    for (const [userId, userTasks] of tasksByUser) {
+      try {
+        // Get user details
+        const user = await userRepository.findById(userId);
+        const userEmail = user ? user.email : 'Unknown User';
+
+        // Prepare task details
+        const taskDetails = userTasks.map(task => ({
+          taskId: task.taskId,
+          title: task.title,
+          description: task.description,
+          createdAt: task.createdAt.toISOString(),
+          age: this.calculateTaskAge(task.createdAt),
+          daysOld: this.getDaysOld(task.createdAt),
+        }));
+
+        // Send WebSocket notification to the user
+        emitTaskReminderToUser(userId, taskDetails);
+
+        logger.info(`✉️ Reminder sent to ${userEmail}: ${userTasks.length} task(s)`);
+      } catch (error) {
+        logger.error(`Failed to send reminder to user ${userId}:`, error);
+      }
+    }
+  }
+
+  private async sendAdminSummary(tasks: any[], thresholdHours: number, tasksByUser: Map<string, any[]>): Promise<void> {
+    try {
+      // Prepare detailed task list with user info
+      const taskDetails = await Promise.all(
+        tasks.map(async (task) => {
+          let userEmail = 'Unknown';
+          try {
+            const user = await userRepository.findById(task.userId);
+            if (user) {
+              userEmail = user.email;
+            }
+          } catch (error) {
+            logger.warn(`Could not fetch user email for userId: ${task.userId}`);
+          }
+
+          return {
+            taskId: task.taskId,
+            userId: task.userId,
+            userEmail,
+            title: task.title,
+            description: task.description,
+            createdAt: task.createdAt.toISOString(),
+            age: this.calculateTaskAge(task.createdAt),
+            daysOld: this.getDaysOld(task.createdAt),
+          };
+        })
+      );
+
+      // Prepare summary by user
+      const userSummaries = Array.from(tasksByUser.entries()).map(([userId, userTasks]) => {
+        const user = taskDetails.find(t => t.userId.toString() === userId);
+        return {
+          userId,
+          userEmail: user?.userEmail || 'Unknown',
+          taskCount: userTasks.length,
+          tasks: userTasks.map(t => ({
+            taskId: t.taskId,
+            title: t.title,
+            age: this.calculateTaskAge(t.createdAt),
+          })),
+        };
+      });
+
+      const adminReminderData = {
+        message: `${tasks.length} incomplete task${tasks.length > 1 ? 's' : ''} from ${tasksByUser.size} user${tasksByUser.size > 1 ? 's' : ''} need attention`,
+        summary: {
+          totalTasks: tasks.length,
+          totalUsers: tasksByUser.size,
+          thresholdHours,
+        },
+        userSummaries,
+        allTasks: taskDetails,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Emit to all connected admin clients
+      emitToAdmins('adminTaskReminders', adminReminderData);
+      logger.info('📊 Admin summary sent to all admins');
+    } catch (error) {
+      logger.error('Error sending admin summary:', error);
     }
   }
 
   /**
    * Log task reminders to console
    */
-  private async logTaskReminders(tasks: Task[]): Promise<void> {
+  private logTaskReminders(tasks: any[], thresholdHours: number): void {
+    logger.info('='.repeat(70));
     logger.info('=== TASK REMINDERS ===');
-    logger.info(`Total incomplete tasks older than ${config.cron.taskReminderThresholdHours} hours: ${tasks.length}`);
-    logger.info('=====================');
+    logger.info(`Total incomplete tasks older than ${thresholdHours} hours: ${tasks.length}`);
+    logger.info('='.repeat(70));
+    logger.info('');
 
-    for (const task of tasks) {
-      const user = await userRepository.findById(task.userId);
-      const taskAge = this.calculateTaskAge(task.createdAt);
+    // Group by user for logging
+    const tasksByUser = this.groupTasksByUser(tasks);
+    
+    logger.info(`📧 Reminders will be sent to ${tasksByUser.size} user(s):`);
+    logger.info('');
 
-      logger.info(`
-Task ID: ${task.taskId}
-User: ${user?.email || 'Unknown'}
-Title: ${task.title}
-Description: ${task.description}
-Created At: ${new Date(task.createdAt).toISOString()}
-Age: ${taskAge}
-Status: Incomplete
--------------------
-      `.trim());
-    }
+    tasksByUser.forEach((userTasks, userId) => {
+      logger.info(`👤 User ID: ${userId}`);
+      logger.info(`   Tasks: ${userTasks.length}`);
+      logger.info('');
 
-    logger.info('=== END REMINDERS ===\n');
-  }
-
-  /**
-   * Send WebSocket notification to admins
-   */
-  private notifyAdmins(tasks: Task[]): void {
-    try {
-      const reminderData = tasks.map(task => ({
-        taskId: task.taskId,
-        userId: task.userId,
-        title: task.title,
-        description: task.description,
-        createdAt: task.createdAt,
-        age: this.calculateTaskAge(task.createdAt),
-      }));
-
-      emitToAdmins('taskReminders', {
-        message: `${tasks.length} incomplete tasks need attention`,
-        count: tasks.length,
-        tasks: reminderData,
-        timestamp: new Date(),
+      userTasks.forEach((task, index) => {
+        const age = this.calculateTaskAge(task.createdAt);
+        
+        logger.info(`   [${index + 1}/${userTasks.length}] ${task.title}`);
+        logger.info(`       Task ID: ${task.taskId}`);
+        logger.info(`       Description: ${task.description}`);
+        logger.info(`       Created: ${task.createdAt.toISOString()}`);
+        logger.info(`       Age: ${age}`);
+        logger.info(`       Status: ${task.completed ? 'Completed' : 'Incomplete'}`);
+        logger.info('');
       });
+      
+      logger.info('-'.repeat(70));
+      logger.info('');
+    });
 
-      logger.info('WebSocket notification sent to admins');
-    } catch (error) {
-      logger.error('Failed to send WebSocket notification:', error);
-    }
+    logger.info('=== END TASK REMINDERS ===');
+    logger.info('='.repeat(70));
+    logger.info('');
   }
 
   /**
@@ -134,50 +233,53 @@ Status: Incomplete
    */
   private calculateTaskAge(createdAt: Date): string {
     const now = new Date();
-    const ageMs = now.getTime() - new Date(createdAt).getTime();
-    const hours = Math.floor(ageMs / (1000 * 60 * 60));
-    const days = Math.floor(hours / 24);
+    const diff = now.getTime() - new Date(createdAt).getTime();
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
     if (days > 0) {
-      return `${days} day(s) ${hours % 24} hour(s)`;
+      return `${days} day${days > 1 ? 's' : ''} ${hours} hour${hours !== 1 ? 's' : ''}`;
+    } else if (hours > 0) {
+      return `${hours} hour${hours > 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    } else {
+      return `${minutes} minute${minutes > 1 ? 's' : ''}`;
     }
-    return `${hours} hour(s)`;
+  }
+
+  private getDaysOld(createdAt: Date): number {
+    const now = new Date();
+    const diff = now.getTime() - new Date(createdAt).getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
   }
 
   /**
-   * Manually trigger task reminders (for testing)
+   * Get status of all cron jobs
    */
-  async triggerTaskReminders(): Promise<void> {
-    logger.info('Manually triggering task reminders...');
-    await this.sendTaskReminders();
+  getJobsStatus(): any[] {
+    const statuses: Array<{ name: string; schedule: string; running: boolean; nextExecution: string }> = [];
+    
+    this.jobs.forEach((job, name) => {
+      statuses.push({
+        name: name === 'taskReminder' ? 'Task Reminder' : name,
+        schedule: config.cron.reminderSchedule,
+        running: this.isEnabled,
+        nextExecution: 'Daily at 8:00 AM',
+      });
+    });
+
+    return statuses;
   }
 
   /**
    * Stop all cron jobs
    */
   stopAllJobs(): void {
-    this.jobs.forEach((job, name) => {
+    this.jobs.forEach((job) => {
       job.stop();
-      logger.info(`Stopped cron job: ${name}`);
     });
-    this.jobs.clear();
-  }
-
-  /**
-   * Get status of all cron jobs
-   */
-  getJobsStatus(): Array<{ name: string; schedule: string; running: boolean }> {
-    const status: Array<{ name: string; schedule: string; running: boolean }> = [];
-
-    if (this.jobs.has('taskReminder')) {
-      status.push({
-        name: 'Task Reminder',
-        schedule: config.cron.reminderSchedule,
-        running: true,
-      });
-    }
-
-    return status;
+    logger.info('All cron jobs stopped');
   }
 }
 

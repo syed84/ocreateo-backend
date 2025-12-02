@@ -70,7 +70,7 @@ const startServer = async () => {
       logger.info(`Health check: http://localhost:${PORT}/health`);
       logger.info(`WebSocket server initialized`);
       logger.info(`Cron jobs status: ${config.cron.enabled ? 'Enabled' : 'Disabled'}`);
-      if (config.cron.enabled) {
+      if (config.cron.enabled === true) {
         logger.info(`Task reminders scheduled: ${config.cron.reminderSchedule}`);
       }
     });
