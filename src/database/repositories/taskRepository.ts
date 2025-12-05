@@ -1,5 +1,5 @@
-import { TaskModel, ITaskDocument } from '../schemas/Task.schema';
-import { Task, CreateTaskDTO, UpdateTaskDTO } from '../../models/Task';
+import { TaskModel, ITaskDocument } from '../../models/task.model';
+import { Task, CreateTaskDTO, UpdateTaskDTO } from '../../types/Task';
 import mongoose from 'mongoose';
 
 export class TaskRepository {

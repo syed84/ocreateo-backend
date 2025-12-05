@@ -1,5 +1,5 @@
 export { connectDatabase, disconnectDatabase } from './connection';
-export { UserModel } from './schemas/User.schema';
-export { TaskModel } from './schemas/Task.schema';
+export { UserModel } from '../models/user.model';
+export { TaskModel } from '../models/task.model';
 export { userRepository } from './repositories/userRepository';
 export { taskRepository } from './repositories/taskRepository';

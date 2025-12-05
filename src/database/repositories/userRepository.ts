@@ -1,5 +1,5 @@
-import { UserModel, IUserDocument } from '../schemas/User.schema';
-import { User, UserRole } from '../../models/User';
+import { UserModel, IUserDocument } from '../../models/user.model';
+import { User, UserRole } from '../../types/User';
 
 export class UserRepository {
   async create(email: string, hashedPassword: string, role: UserRole = UserRole.USER): Promise<User> {

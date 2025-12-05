@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { userRepository } from '../database/repositories/userRepository';
-import { User, UserRole, sanitizeUser } from '../models/User';
+import { User, UserRole, sanitizeUser } from '../types/User';
 import { config } from '../config/config';
 
 export class AuthService {

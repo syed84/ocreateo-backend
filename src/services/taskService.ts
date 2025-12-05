@@ -1,5 +1,5 @@
 import { taskRepository } from '../database/repositories/taskRepository';
-import { Task, CreateTaskDTO, UpdateTaskDTO } from '../models/Task';
+import { Task, CreateTaskDTO, UpdateTaskDTO } from '../types/Task';
 import { emitTaskEvent } from '../utils/socketEvents';
 
 class TaskService {
